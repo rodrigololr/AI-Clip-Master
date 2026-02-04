@@ -28,13 +28,32 @@ if uploaded_file:
             moments_json = ai_service.identify_best_moments(transcription)
             moments = json.loads(moments_json).get('moments', [])
 
+            clips_gerados = []
+            
             for i, m in enumerate(moments):
                 st.write(f"🎬 Cortando momento {i+1}: {m['label']}...")
                 out_file = f"clip_{i}.mp4"
                 video_service.cut_clip("temp_video.mp4", m['start'], m['end'], out_file)
-                st.video(out_file)
+                clips_gerados.append((out_file, m['label']))
                 
             status.update(label="Concluído!", state="complete")
+
+        if clips_gerados:
+            st.divider()
+            st.subheader("✅ Seus Clips estão prontos!")
+            cols = st.columns(len(clips_gerados))
+            for idx, (file, label) in enumerate(clips_gerados):
+                with cols[idx]:
+                    st.video(file)
+                    st.caption(f"Momento {idx+1}: {label}")
+                    with open(file, "rb") as f:
+                        st.download_button(
+                            label=f"⬇️ Baixar",
+                            data=f,
+                            file_name=file,
+                            mime="video/mp4",
+                            key=f"btn_{idx}"
+                        )
 
 st.sidebar.info("Built with Pollinations AI 🚀")
 with st.sidebar:
@@ -44,4 +63,4 @@ with st.sidebar:
         "Este app utiliza a **Pollinations AI** para análise inteligente de mídia."
     )
     # Exibe o badge oficial clicável
-    st.markdown("[![Built with Pollinations.ai](https://pollinations.ai/badge.svg)](https://pollinations.ai)")
+    st.markdown("[![Built with Pollinations.ai](assets/badge-built-with.svg)](https://pollinations.ai)")                                                                                                              
