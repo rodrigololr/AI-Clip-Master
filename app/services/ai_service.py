@@ -5,6 +5,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+prompt = (
+    "Aja como um editor de clips virais. Com base na transcrição abaixo, "
+    "retorne EXATAMENTE um objeto JSON com uma chave 'moments' contendo uma lista. "
+    "Exemplo de formato: {\"moments\": [{\"start\": 10, \"end\": 30, \"label\": \"Título\"}]} "
+)
+
 class AIService:
     def __init__(self):
         # Base URL definida na documentação da API
@@ -21,9 +27,9 @@ class AIService:
             "messages": [
                 {
                     "role": "system", 
-                    "content": "Você é um editor de vídeos viral. Receba uma transcrição e retorne APENAS um JSON com os 2 melhores momentos: [{'start': seg, 'end': seg, 'label': 'motivo'}]."
+                    "content": prompt
                 },
-                {"role": "user", "content": f"Transcrição: {transcription}"}
+                {"role": "user", "content": transcription}
             ],
             "response_format": { "type": "json_object" } # Recurso suportado por modelos compatíveis
         }
@@ -34,4 +40,20 @@ class AIService:
         }
 
         response = requests.post(self.base_url, headers=headers, json=payload)
-        return response.json()['choices'][0]['message']['content']
+        content = response.json()['choices'][0]['message']['content']
+        return self._clean_json_response(content)
+
+    def _clean_json_response(self, text):
+        """
+        Limpa blocos de código markdown se houver.
+        """
+        text = text.strip()
+        if text.startswith("```json"):
+            text = text[7:]
+        elif text.startswith("```"):
+            text = text[3:]
+        
+        if text.endswith("```"):
+            text = text[:-3]
+            
+        return text.strip()
