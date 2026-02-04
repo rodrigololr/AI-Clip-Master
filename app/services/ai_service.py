@@ -7,7 +7,7 @@ load_dotenv()
 
 prompt = (
     "Aja como um editor de clips virais. Com base na transcrição abaixo, "
-    "retorne EXATAMENTE um objeto JSON com uma chave 'moments' contendo uma lista. "
+    "retorne EXATAMENTE um objeto JSON com uma chave 'moments' contendo uma lista COM DOIS MOMENTOS. "
     "Exemplo de formato: {\"moments\": [{\"start\": 10, \"end\": 30, \"label\": \"Título\"}]} "
 )
 
