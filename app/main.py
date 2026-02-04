@@ -19,6 +19,9 @@ if uploaded_file:
     video_service = VideoService()
     ai_service = AIService()
 
+    if "clips_gerados" not in st.session_state:
+        st.session_state["clips_gerados"] = []
+
     if st.button("Gerar Clips"):
         with st.status("Processando...", expanded=True) as status:
             st.write("📝 Transcrevendo áudio...")
@@ -28,32 +31,33 @@ if uploaded_file:
             moments_json = ai_service.identify_best_moments(transcription)
             moments = json.loads(moments_json).get('moments', [])
 
-            clips_gerados = []
+            clips_temp = []
             
             for i, m in enumerate(moments):
                 st.write(f"🎬 Cortando momento {i+1}: {m['label']}...")
                 out_file = f"clip_{i}.mp4"
                 video_service.cut_clip("temp_video.mp4", m['start'], m['end'], out_file)
-                clips_gerados.append((out_file, m['label']))
+                clips_temp.append((out_file, m['label']))
                 
+            st.session_state["clips_gerados"] = clips_temp
             status.update(label="Concluído!", state="complete")
 
-        if clips_gerados:
-            st.divider()
-            st.subheader("✅ Seus Clips estão prontos!")
-            cols = st.columns(len(clips_gerados))
-            for idx, (file, label) in enumerate(clips_gerados):
-                with cols[idx]:
-                    st.video(file)
-                    st.caption(f"Momento {idx+1}: {label}")
-                    with open(file, "rb") as f:
-                        st.download_button(
-                            label=f"⬇️ Baixar",
-                            data=f,
-                            file_name=file,
-                            mime="video/mp4",
-                            key=f"btn_{idx}"
-                        )
+    if st.session_state["clips_gerados"]:
+        st.divider()
+        st.subheader("✅ Seus Clips estão prontos!")
+        cols = st.columns(len(st.session_state["clips_gerados"]))
+        for idx, (file, label) in enumerate(st.session_state["clips_gerados"]):
+            with cols[idx]:
+                st.video(file)
+                st.caption(f"Momento {idx+1}: {label}")
+                with open(file, "rb") as f:
+                    st.download_button(
+                        label=f"⬇️ Baixar",
+                        data=f,
+                        file_name=file,
+                        mime="video/mp4",
+                        key=f"btn_{idx}"
+                    )
 
 st.sidebar.info("Built with Pollinations AI 🚀")
 with st.sidebar:
