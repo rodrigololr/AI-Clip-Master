@@ -16,6 +16,6 @@ class VideoService:
 
     def cut_clip(self, video_path, start, end, output_name):
         with VideoFileClip(video_path) as video:
-            new_clip = video.subclip(start, end)
+            new_clip = video.subclipped(start, end)
             new_clip.write_videofile(output_name, codec="libx264", audio_codec="aac", threads=1)
         return output_name
