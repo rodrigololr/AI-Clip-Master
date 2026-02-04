@@ -1,5 +1,5 @@
 from faster_whisper import WhisperModel
-from moviepy.editor import VideoFileClip
+from moviepy import VideoFileClip
 import os
 
 class VideoService:
