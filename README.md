@@ -4,7 +4,7 @@ Um gerador de clips inteligentes que utiliza IA para encontrar os melhores momen
 
 ## Como Funciona
 1. **Transcrição:** O áudio é convertido em texto localmente usando `faster-whisper`.
-2. **Análise de IA:** A transcrição é enviada para a **Pollinations AI** via API (Endpoint `/v1/chat/completions`) para identificar os segmentos mais engajadores.
+2. **Análise de IA:** A transcrição é enviada para a **Pollinations AI** via API (Endpoint `/v1/chat/completions`) para identificar os segmentos mais engajadores, Atualmente usando o modelo "qwen-character".
 3. **Corte Automático:** O app realiza o subclip do vídeo original e entrega os arquivos prontos para download.
 
 ## Tecnologias
