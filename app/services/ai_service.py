@@ -23,7 +23,7 @@ class AIService:
         """
         # Exemplo de uso do modelo 'openai' conforme a documentação
         payload = {
-            "model": "nova-fast", 
+            "model": "qwen-character", 
             "messages": [
                 {
                     "role": "system", 
