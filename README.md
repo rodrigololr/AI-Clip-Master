@@ -12,6 +12,7 @@ Um gerador de clips inteligentes que utiliza IA para encontrar os melhores momen
 - **Streamlit**: Interface rápida e intuitiva.
 - **Faster-Whisper**: Transcrição eficiente.
 - **MoviePy**: Edição programática de vídeo.
+ - **ffmpeg**: Necessário para MoviePy. Se estiver usando Streamlit Cloud, adicione ffmpeg aos requirements ou utilize o Dockerfile provido.
 
 ## 📄 Créditos
 Este projeto foi desenvolvido utilizando a infraestrutura da [pollinations.ai](https://pollinations.ai).
