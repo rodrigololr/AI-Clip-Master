@@ -184,6 +184,19 @@ if uploaded_file:
                         mime="video/mp4",
                         key=f"btn_{idx}",
                     )
+        # Floating overlay HTML generator
+        # Use a dedicated builder for overlay HTML and render via streamlit components
+        try:
+            from streamlit.components.v1 import html as st_html
+            from app.ui.overlay import build_overlay_html
+
+            overlay_html = build_overlay_html(
+                st.session_state["clips_gerados"], position=OVERLAY_POSITION
+            )
+            st_html(overlay_html, height=140)
+        except Exception:
+            # If components not available or file:// access blocked in some envs, ignore gracefully
+            pass
 else:
     st.info("Envie um video para iniciar o processamento.")
 
