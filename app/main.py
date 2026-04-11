@@ -1,8 +1,17 @@
+import os
+import sys
+
+# Ensure repository root is on sys.path so 'app' package imports work when
+# running `streamlit run app/main.py` in environments that don't add the
+# repository root to PYTHONPATH (some hosting providers like Streamlit Cloud).
+_repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
+
 import streamlit as st
 from app.services.video_service import VideoService, VideoServiceError
 from app.services.ai_service import AIService, AIServiceError
 from app.config import N_CLIPS, MODEL_SIZE, OVERLAY_POSITION
-import os
 import shutil
 import tempfile
 import uuid
