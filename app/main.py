@@ -1,12 +1,21 @@
 import os
 import sys
 
-# Ensure repository root is on sys.path so 'app' package imports work when
-# running `streamlit run app/main.py` in environments that don't add the
-# repository root to PYTHONPATH (some hosting providers like Streamlit Cloud).
+# Insert repository root into sys.path as the FIRST operation in this file to
+# ensure any subsequent imports like `from app.services...` resolve correctly
+# when Streamlit runs the script in hosting environments that do not add the
+# repo root to PYTHONPATH (observed on Streamlit Community Cloud).
 _repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _repo_root not in sys.path:
+    # Prepend to sys.path to take precedence over other entries
     sys.path.insert(0, _repo_root)
+
+# Lightweight debug prints to help remote environments surface sys.path issues
+try:
+    print(f"[startup] repo_root={_repo_root}")
+    print(f"[startup] repo_root_in_sys_path={_repo_root in sys.path}")
+except Exception:
+    pass
 
 import streamlit as st
 from app.services.video_service import VideoService, VideoServiceError
