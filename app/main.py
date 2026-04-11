@@ -18,18 +18,70 @@ except Exception:
     pass
 
 import streamlit as st
-from app.services.video_service import VideoService, VideoServiceError
-from app.services.ai_service import AIService, AIServiceError
 from app.config import N_CLIPS, MODEL_SIZE, OVERLAY_POSITION
 import shutil
 import tempfile
 import uuid
+
+
+def _check_health():
+    """Return a dict with health checks for runtime dependencies and config."""
+    checks = {}
+    # POLLINATIONS_API_KEY
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv()
+    except Exception:
+        pass
+
+    checks["POLLINATIONS_API_KEY"] = bool(os.getenv("POLLINATIONS_API_KEY"))
+
+    # ffmpeg availability
+    try:
+        checks["ffmpeg"] = shutil.which("ffmpeg") is not None
+    except Exception:
+        checks["ffmpeg"] = False
+
+    # faster_whisper and moviepy availability
+    try:
+        import importlib
+
+        checks["faster_whisper"] = (
+            importlib.util.find_spec("faster_whisper") is not None
+        )
+    except Exception:
+        checks["faster_whisper"] = False
+
+    try:
+        checks["moviepy"] = importlib.util.find_spec("moviepy.editor") is not None
+    except Exception:
+        checks["moviepy"] = False
+
+    # Configured model
+    try:
+        from app.config import POLLINATIONS_MODEL
+
+        checks["pollinations_model"] = POLLINATIONS_MODEL
+    except Exception:
+        checks["pollinations_model"] = None
+
+    return checks
+
+
+# Defer heavy/service imports to runtime to avoid import-time issues in
+# hosted environments (Streamlit Cloud) where package import ordering can
+# trigger KeyError during concurrent reloads. Import services lazily inside
+# the functions/blocks that use them.
 
 st.set_page_config(page_title="Pollinations Clip Gen", page_icon="🌸")
 
 
 @st.cache_resource(show_spinner=False)
 def get_video_service():
+    # Lazy import to avoid import-time KeyError on some hosts
+    from app.services.video_service import VideoService
+
     return VideoService(model_size=MODEL_SIZE)
 
 
@@ -96,6 +148,12 @@ st.caption(
     f"Configuracao fixa: {N_CLIPS} clips por video e modelo Whisper {MODEL_SIZE}."
 )
 
+# Health check in sidebar
+with st.sidebar.expander("Diagnostico / Health Check", expanded=False):
+    health = _check_health()
+    st.markdown("**Status das dependencias e configuracoes:**")
+    st.write(health)
+
 uploader_key = f"video_uploader_{st.session_state['uploader_version']}"
 uploaded_file = st.file_uploader("Suba seu video (mp4)", type=["mp4"], key=uploader_key)
 
@@ -110,6 +168,9 @@ if uploaded_file:
         prepare_uploaded_video(uploaded_file, current_token)
 
     video_service = get_video_service()
+    # Lazy import AIService here
+    from app.services.ai_service import AIService
+
     ai_service = AIService()
 
     if st.button("Gerar clips", type="primary"):
