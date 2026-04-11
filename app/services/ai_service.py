@@ -35,7 +35,7 @@ class AIService:
             )
 
         payload = {
-            "model": "qwen-character",
+            "model": "nova-fast",
             "messages": [
                 {"role": "system", "content": PROMPT},
                 {"role": "user", "content": transcription},
