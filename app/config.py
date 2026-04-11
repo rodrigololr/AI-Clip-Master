@@ -8,3 +8,6 @@ MODEL_SIZE = "tiny"
 
 # Overlay UI position: bottom-right or bottom-left
 OVERLAY_POSITION = "bottom-right"
+
+# Pollinations model to use for analysis (default switched to 'nova-fast')
+POLLINATIONS_MODEL = "nova-fast"
