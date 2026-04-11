@@ -1,11 +1,12 @@
 import requests
 import os
 import json
+import time
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from app.config import N_CLIPS
+from app.config import N_CLIPS, POLLINATIONS_MODEL
 
 PROMPT = (
     "Aja como um editor de clips virais. Com base na transcricao abaixo, "
@@ -24,6 +25,13 @@ class AIService:
     def __init__(self):
         self.base_url = "https://gen.pollinations.ai/v1/chat/completions"
         self.api_key = os.getenv("POLLINATIONS_API_KEY")
+        # number of retries for transient network errors
+        try:
+            self.max_retries = int(os.getenv("POLLINATIONS_MAX_RETRIES", "2"))
+        except Exception:
+            self.max_retries = 2
+        # injection point for sleep (helps tests avoid real sleeps)
+        self._sleep = time.sleep
 
     def identify_best_moments(self, transcription):
         if not self.api_key:
@@ -35,7 +43,7 @@ class AIService:
             )
 
         payload = {
-            "model": "qwen-character",
+            "model": POLLINATIONS_MODEL,
             "messages": [
                 {"role": "system", "content": PROMPT},
                 {"role": "user", "content": transcription},
@@ -48,17 +56,44 @@ class AIService:
             "Content-Type": "application/json",
         }
 
-        try:
-            response = requests.post(
-                self.base_url, headers=headers, json=payload, timeout=60
-            )
-            response.raise_for_status()
-        except requests.Timeout as exc:
-            raise AIServiceError(
-                "A IA demorou demais para responder. Tente novamente."
-            ) from exc
-        except requests.RequestException as exc:
-            raise AIServiceError("Falha ao consultar a Pollinations AI.") from exc
+        # Attempt the request with retries for transient failures
+        last_exc = None
+        for attempt in range(0, self.max_retries + 1):
+            try:
+                response = requests.post(
+                    self.base_url, headers=headers, json=payload, timeout=60
+                )
+                response.raise_for_status()
+                break
+            except requests.Timeout as exc:
+                last_exc = exc
+                # timeouts are transient; retry if attempts remain
+                if attempt < self.max_retries:
+                    self._sleep(1 * (2**attempt))
+                    continue
+                raise AIServiceError(
+                    "A IA demorou demais para responder. Tente novamente."
+                ) from exc
+            except requests.RequestException as exc:
+                last_exc = exc
+                if attempt < self.max_retries:
+                    # exponential backoff before retry
+                    self._sleep(0.5 * (2**attempt))
+                    continue
+                # last attempt failed — provide richer diagnostics
+                msg = "Falha ao consultar a Pollinations AI."
+                try:
+                    if hasattr(exc, "response") and exc.response is not None:
+                        msg += f" Status={exc.response.status_code}"
+                        # attempt to include response text safely
+                        txt = (
+                            exc.response.text if hasattr(exc.response, "text") else None
+                        )
+                        if txt:
+                            msg += f" Response={txt[:200]}"
+                except Exception:
+                    pass
+                raise AIServiceError(msg) from exc
 
         try:
             response_json = response.json()
@@ -71,6 +106,11 @@ class AIService:
         try:
             parsed_content = json.loads(cleaned_content)
         except json.JSONDecodeError as exc:
+            # As a last resort, attempt a local fallback if configured
+            if os.getenv("POLLINATIONS_OFFLINE_FALLBACK", "0") == "1":
+                fallback = self._fallback_moments(transcription)
+                if fallback:
+                    return fallback
             raise AIServiceError(
                 "A IA retornou JSON invalido para os momentos do video."
             ) from exc
@@ -172,3 +212,47 @@ class AIService:
 
         # fallback: retorna o texto limpo para tentar json.loads e gerar o erro padrao a montante
         return text
+
+    def _fallback_moments(self, transcription):
+        """Very small heuristic to return two candidate moments from the transcription.
+
+        This is used when the external AI fails and POLLINATIONS_OFFLINE_FALLBACK=1 is set.
+        It parses lines like '[0.00s - 3.00s] text' produced by the local transcriber
+        and selects the two longest text segments as candidate moments.
+        """
+        lines = (transcription or "").splitlines()
+        candidates = []
+        for ln in lines:
+            try:
+                if ln.startswith("[") and "]" in ln:
+                    meta, text = ln.split("]", 1)
+                    meta = meta.lstrip("[")
+                    if "-" in meta:
+                        a, b = meta.split("-", 1)
+                        start = float(a.replace("s", "").strip())
+                        end = float(b.replace("s", "").strip())
+                        duration = max(0.0, end - start)
+                        candidates.append(
+                            {
+                                "start": start,
+                                "end": end,
+                                "label": text.strip(),
+                                "duration": duration,
+                            }
+                        )
+            except Exception:
+                continue
+
+        if not candidates:
+            return None
+
+        # sort by duration or length of label
+        candidates.sort(key=lambda x: (-x["duration"], -len(x.get("label", ""))))
+        selected = []
+        for item in candidates[:2]:
+            selected.append(
+                {"start": item["start"], "end": item["end"], "label": item["label"]}
+            )
+        if len(selected) == 2:
+            return selected
+        return None
