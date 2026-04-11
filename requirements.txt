@@ -3,3 +3,4 @@ requests
 python-dotenv
 faster-whisper
 moviepy
+# ffmpeg will be installed in Dockerfile or can be added on Streamlit Cloud
