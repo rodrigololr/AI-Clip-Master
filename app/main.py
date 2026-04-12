@@ -18,6 +18,9 @@ except Exception:
     pass
 
 import streamlit as st
+import traceback
+from datetime import datetime
+import pathlib
 from app.config import N_CLIPS, MODEL_SIZE, OVERLAY_POSITION
 import shutil
 import tempfile
@@ -43,20 +46,42 @@ def _check_health():
     except Exception:
         checks["ffmpeg"] = False
 
-    # faster_whisper and moviepy availability
+    # faster_whisper and moviepy availability — attempt import to capture errors
     try:
         import importlib
 
         checks["faster_whisper"] = (
             importlib.util.find_spec("faster_whisper") is not None
         )
-    except Exception:
-        checks["faster_whisper"] = False
+    except Exception as e:
+        checks["faster_whisper"] = {"ok": False, "error": str(e)}
 
     try:
-        checks["moviepy"] = importlib.util.find_spec("moviepy.editor") is not None
-    except Exception:
-        checks["moviepy"] = False
+        # attempt to import moviepy.editor and capture import error message if any
+        try:
+            import moviepy.editor as _mp
+
+            checks["moviepy"] = {"ok": True}
+        except Exception as imp_exc:
+            # capture full traceback for diagnostics
+            tb = traceback.format_exc()
+            checks["moviepy"] = {"ok": False, "error": repr(imp_exc), "traceback": tb}
+            # persist a copy to logs/moviepy_import_trace.txt for remote debugging
+            try:
+                logs_dir = pathlib.Path(__file__).resolve().parents[1] / "logs"
+                logs_dir.mkdir(parents=True, exist_ok=True)
+                log_file = logs_dir / "moviepy_import_trace.txt"
+                with open(log_file, "a", encoding="utf-8") as f:
+                    f.write(
+                        f"[{datetime.utcnow().isoformat()}] moviepy import failed:\n"
+                    )
+                    f.write(tb)
+                    f.write("\n---\n")
+            except Exception:
+                # if logging fails, don't mask the original error
+                pass
+    except Exception as e:
+        checks["moviepy"] = {"ok": False, "error": str(e)}
 
     # Configured model
     try:
@@ -173,6 +198,32 @@ if uploaded_file:
 
     ai_service = AIService()
 
+    # Re-check health before attempting processing to decide if cutting is available
+    runtime_health = _check_health()
+    moviepy_ok = (
+        bool(runtime_health.get("moviepy") and runtime_health.get("moviepy").get("ok"))
+        if isinstance(runtime_health.get("moviepy"), dict)
+        else bool(runtime_health.get("moviepy"))
+    )
+    ffmpeg_ok = bool(runtime_health.get("ffmpeg"))
+    cutting_available = moviepy_ok or ffmpeg_ok
+
+    # Allow user to opt-in to offline fallback if external AI fails
+    fallback_checkbox_key = "offline_fallback_enabled"
+    if fallback_checkbox_key not in st.session_state:
+        st.session_state[fallback_checkbox_key] = False
+    st.checkbox(
+        "Permitir fallback local da Pollinations (modo degradado)",
+        key=fallback_checkbox_key,
+        help="Ativa heuristica local caso a API externa falhe (POLLINATIONS_OFFLINE_FALLBACK=1).",
+    )
+
+    if not cutting_available:
+        st.warning(
+            "Corte de video indisponivel neste ambiente. Nem moviepy nem ffmpeg foram detectados corretamente.\n"
+            "Voce ainda pode gerar a transcricao e analise, mas o corte sera pulado."
+        )
+
     if st.button("Gerar clips", type="primary"):
         st.session_state["clips_gerados"] = []
         st.session_state["moments_detectados"] = []
@@ -202,16 +253,23 @@ if uploaded_file:
                     progress_bar.progress(
                         progress_value, text=f"Cortando clip {index} de {N_CLIPS}"
                     )
+                    # If cutting is not available, skip actual cut but record a placeholder
                     out_file = os.path.join(
                         st.session_state["temp_dir"],
                         f"clip_{index}_{uuid.uuid4().hex[:8]}.mp4",
                     )
-                    video_service.cut_clip(
-                        st.session_state["temp_video_path"],
-                        moment["start"],
-                        moment["end"],
-                        out_file,
-                    )
+                    if cutting_available:
+                        # perform the cut (moviepy preferred, ffmpeg fallback inside service)
+                        video_service.cut_clip(
+                            st.session_state["temp_video_path"],
+                            moment["start"],
+                            moment["end"],
+                            out_file,
+                        )
+                    else:
+                        # create an empty placeholder file so UI can still show a download
+                        open(out_file, "wb").close()
+
                     clips_temp.append(
                         {
                             "path": out_file,

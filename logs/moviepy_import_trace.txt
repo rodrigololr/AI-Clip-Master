@@ -1,0 +1,7 @@
+[2026-04-12T16:03:16.902800] moviepy import failed:
+Traceback (most recent call last):
+  File "/home/antonio/AI-Clip-Master/app/main.py", line 62, in _check_health
+    import moviepy.editor as _mp
+ModuleNotFoundError: No module named 'moviepy.editor'
+
+---

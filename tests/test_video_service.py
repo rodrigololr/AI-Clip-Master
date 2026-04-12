@@ -59,3 +59,27 @@ def test_cut_clip_invalid_timestamps(monkeypatch, tmp_path):
     # end before start
     with pytest.raises(VideoServiceError):
         svc.cut_clip("/fake.mp4", 4.0, 2.0, str(out_file))
+
+
+def test_ffmpeg_fallback_when_moviepy_fails(monkeypatch, tmp_path):
+    svc = VideoService(model_size="tiny")
+
+    # Simulate ffmpeg present
+    monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/ffmpeg")
+
+    # Simulate that VideoFileClip is not available (None)
+    monkeypatch.setattr("app.services.video_service.VideoFileClip", None)
+
+    # Monkeypatch subprocess.run to simulate successful ffmpeg call
+    class Completed:
+        def __init__(self, returncode=0):
+            self.returncode = returncode
+
+    def fake_run(cmd, shell=True, check=False, capture_output=False, text=False):
+        return Completed(returncode=0)
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+
+    out_file = tmp_path / "out_ffmpeg.mp4"
+    res = svc.cut_clip("/fake.mp4", 0.0, 4.0, str(out_file))
+    assert res == str(out_file)

@@ -1,18 +1,21 @@
-T001 - Estrutura de testes, fixtures e .env.example
+What was implemented
+- Added ffmpeg-based fallback for cutting in VideoService.cut_clip when moviepy is missing or fails at runtime.
+- In main UI: added health re-check, warning banner when cutting is unavailable, and an offline fallback checkbox to opt into degraded Pollinations heuristic.
+- Modified processing flow to skip actual cutting when neither moviepy nor ffmpeg are detected, but still provide placeholder files so the UI remains stable.
 
-O que foi implementado:
-- Adicionado pytest como dependência de dev.
-- Criado diretório tests/ com conftest.py incluindo fixtures tmp_video_dir e clear_env_vars.
-- .env.example ainda deverá ser criado manualmente (variáveis necessárias: POLLINATIONS_API_KEY).
+Why this approach
+- Using ffmpeg directly via subprocess provides a lightweight and deterministic fallback when moviepy import fails in hosted environments.
+- Keeping moviepy as preferred path preserves format handling when available.
+- UI changes allow the app to remain usable in Streamlit Cloud while we diagnose the moviepy import problem.
 
-Por que esta abordagem:
-- Pytest é simples e bem suportado; facilita mocks/fixtures.
+Decisions & edge cases
+- If moviepy fails at runtime, we try ffmpeg fallback. If ffmpeg returns non-zero exit code, we raise a clear VideoServiceError.
+- Placeholders are created when cutting is disabled to avoid breaking the UI and to allow users to still download a (empty) file with metadata.
 
-Decisões e edge cases:
-- Isolamos POLLINATIONS_API_KEY em fixtures para evitar dependência de ambiente.
+How to test
+- Unit tests already cover VideoService.transcribe and cut_clip timestamp validation. Run pytest locally.
+- Manually test in an environment with ffmpeg installed but without moviepy to verify subprocess path is used.
 
-Como testar:
-- Ative a venv e rode `python -m pytest`.
-
-Dívida técnica:
-- Ainda precisamos adicionar cobertura de testes e CI (feito em tarefas seguintes).
+Remaining technical debt
+- We currently do not probe the input video duration using ffprobe; ffmpeg fallback uses requested timestamps and ensures a minimum duration. This may cause truncated outputs if timestamps are outside range.
+- Consider adding ffprobe-based duration check for more robust normalization instead of optimistic assumptions.
