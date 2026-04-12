@@ -1,5 +1,7 @@
 import shutil
 import types
+import subprocess
+import shlex
 
 # optional imports to keep module import lightweight for tests/environments
 try:
@@ -72,10 +74,8 @@ class VideoService:
             )
 
         # Ensure moviepy is available at runtime
-        if VideoFileClip is None:
-            raise VideoServiceError(
-                "moviepy nao esta instalado no ambiente. Instale 'moviepy' para permitir cortes."
-            )
+        # Prefer using moviepy if available because it handles many formats
+        use_moviepy = VideoFileClip is not None
 
         try:
             start = float(start)
@@ -86,41 +86,87 @@ class VideoService:
         if end <= start:
             raise VideoServiceError("Intervalo invalido para corte de clip.")
 
-        # abrir o arquivo primeiro para obter a duracao e validar os timestamps
-        with VideoFileClip(video_path) as video:
-            duration = float(video.duration or 0)
-            if duration <= 0:
-                raise VideoServiceError("Duracao do video invalida para corte.")
-
-            # normalizar os timestamps para dentro do range do video
-            safe_start = max(0.0, min(start, duration))
-            safe_end = max(0.0, min(end, duration))
-
-            # garantir duracao minima do clip
-            if safe_end - safe_start < self.min_clip_duration:
-                # tentar expandir para a direita
-                safe_end = min(duration, safe_start + self.min_clip_duration)
-                # se nao for possivel, tentar expandir para esquerda
-                if safe_end - safe_start < self.min_clip_duration:
-                    safe_start = max(0.0, safe_end - self.min_clip_duration)
-
-            if safe_end <= safe_start or safe_end - safe_start < self.min_clip_duration:
-                raise VideoServiceError(
-                    f"Nao foi possivel ajustar os timestamps para um corte valido (video duracao={duration:.2f}s, requested={start}->{end})."
-                )
-
-            new_clip = video.subclip(safe_start, safe_end)
+        # If moviepy is available, prefer its robust handling of formats and timestamps
+        if use_moviepy:
             try:
-                new_clip.write_videofile(
-                    output_name,
-                    codec="libx264",
-                    audio_codec="aac",
-                    threads=1,
-                    logger=None,
-                )
+                with VideoFileClip(video_path) as video:
+                    duration = float(video.duration or 0)
+                    if duration <= 0:
+                        raise VideoServiceError("Duracao do video invalida para corte.")
+
+                    # normalizar os timestamps para dentro do range do video
+                    safe_start = max(0.0, min(start, duration))
+                    safe_end = max(0.0, min(end, duration))
+
+                    # garantir duracao minima do clip
+                    if safe_end - safe_start < self.min_clip_duration:
+                        # tentar expandir para a direita
+                        safe_end = min(duration, safe_start + self.min_clip_duration)
+                        # se nao for possivel, tentar expandir para esquerda
+                        if safe_end - safe_start < self.min_clip_duration:
+                            safe_start = max(0.0, safe_end - self.min_clip_duration)
+
+                    if (
+                        safe_end <= safe_start
+                        or safe_end - safe_start < self.min_clip_duration
+                    ):
+                        raise VideoServiceError(
+                            f"Nao foi possivel ajustar os timestamps para um corte valido (video duracao={duration:.2f}s, requested={start}->{end})."
+                        )
+
+                    new_clip = video.subclip(safe_start, safe_end)
+                    try:
+                        new_clip.write_videofile(
+                            output_name,
+                            codec="libx264",
+                            audio_codec="aac",
+                            threads=1,
+                            logger=None,
+                        )
+                    except Exception as exc:
+                        raise VideoServiceError(
+                            "Falha ao renderizar o clip de video."
+                        ) from exc
+                    finally:
+                        new_clip.close()
+
+                return output_name
+            except VideoServiceError:
+                # re-raise known service errors
+                raise
             except Exception as exc:
-                raise VideoServiceError("Falha ao renderizar o clip de video.") from exc
-            finally:
-                new_clip.close()
+                # If moviepy fails at runtime, we'll attempt a direct ffmpeg fallback
+                # only if ffmpeg is present. Capture the exception for diagnostics.
+                moviepy_exc = exc
+
+        # At this point either moviepy wasn't available or it failed; attempt ffmpeg
+        # ffmpeg path already checked at init, so build a safe ffmpeg call
+        # Normalize timestamps by probing duration with ffprobe if available,
+        # but to keep this lightweight we'll try to use the requested interval
+        safe_start = max(0.0, start)
+        safe_end = max(safe_start + self.min_clip_duration, end)
+        duration = safe_end - safe_start
+
+        # Build ffmpeg command (re-encode to ensure compatibility)
+        cmd = (
+            f"ffmpeg -hide_banner -loglevel error -ss {safe_start:.3f} -i {shlex.quote(video_path)} "
+            f"-t {duration:.3f} -c:v libx264 -c:a aac -pix_fmt yuv420p -y {shlex.quote(output_name)}"
+        )
+
+        try:
+            completed = subprocess.run(cmd, shell=True, check=False)
+            if completed.returncode != 0:
+                raise VideoServiceError(
+                    "ffmpeg falhou ao cortar o video (codigo != 0)."
+                )
+        except VideoServiceError:
+            raise
+        except Exception as exc:
+            # If we had a moviepy exception earlier, chain it for diagnostics
+            if "moviepy_exc" in locals():
+                raise VideoServiceError(
+                    "Falha ao cortar video com ffmpeg e moviepy."
+                ) from moviepy_exc
+            raise VideoServiceError("Falha ao cortar video com ffmpeg.") from exc
 
         return output_name
