@@ -3,4 +3,8 @@ requests
 python-dotenv
 faster-whisper
 moviepy
+# Additional multimedia deps to improve moviepy compatibility on hosted envs
+imageio
+imageio-ffmpeg
+Pillow
 # ffmpeg will be installed in Dockerfile or can be added on Streamlit Cloud
