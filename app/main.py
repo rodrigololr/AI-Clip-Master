@@ -18,6 +18,9 @@ except Exception:
     pass
 
 import streamlit as st
+import traceback
+from datetime import datetime
+import pathlib
 from app.config import N_CLIPS, MODEL_SIZE, OVERLAY_POSITION
 import shutil
 import tempfile
@@ -60,7 +63,23 @@ def _check_health():
 
             checks["moviepy"] = {"ok": True}
         except Exception as imp_exc:
-            checks["moviepy"] = {"ok": False, "error": repr(imp_exc)}
+            # capture full traceback for diagnostics
+            tb = traceback.format_exc()
+            checks["moviepy"] = {"ok": False, "error": repr(imp_exc), "traceback": tb}
+            # persist a copy to logs/moviepy_import_trace.txt for remote debugging
+            try:
+                logs_dir = pathlib.Path(__file__).resolve().parents[1] / "logs"
+                logs_dir.mkdir(parents=True, exist_ok=True)
+                log_file = logs_dir / "moviepy_import_trace.txt"
+                with open(log_file, "a", encoding="utf-8") as f:
+                    f.write(
+                        f"[{datetime.utcnow().isoformat()}] moviepy import failed:\n"
+                    )
+                    f.write(tb)
+                    f.write("\n---\n")
+            except Exception:
+                # if logging fails, don't mask the original error
+                pass
     except Exception as e:
         checks["moviepy"] = {"ok": False, "error": str(e)}
 

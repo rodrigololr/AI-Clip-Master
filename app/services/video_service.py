@@ -141,16 +141,43 @@ class VideoService:
 
         # At this point either moviepy wasn't available or it failed; attempt ffmpeg
         # ffmpeg path already checked at init, so build a safe ffmpeg call
-        # Normalize timestamps by probing duration with ffprobe if available,
-        # but to keep this lightweight we'll try to use the requested interval
-        safe_start = max(0.0, start)
-        safe_end = max(safe_start + self.min_clip_duration, end)
-        duration = safe_end - safe_start
+        # Probe input duration with ffprobe if available to normalize timestamps
+        input_duration = None
+        try:
+            if shutil.which("ffprobe"):
+                probe_cmd = f"ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 {shlex.quote(video_path)}"
+                completed = subprocess.run(
+                    probe_cmd, shell=True, check=False, capture_output=True, text=True
+                )
+                if completed.returncode == 0 and completed.stdout:
+                    try:
+                        input_duration = float(completed.stdout.strip().splitlines()[0])
+                    except Exception:
+                        input_duration = None
+        except Exception:
+            input_duration = None
+
+        # Normalize start/end using probed duration when available
+        if input_duration is not None and input_duration > 0:
+            duration = float(input_duration)
+            safe_start = max(0.0, min(start, duration))
+            safe_end = max(0.0, min(end, duration))
+        else:
+            # fall back to optimistic clipping based on provided timestamps
+            safe_start = max(0.0, start)
+            safe_end = max(safe_start + self.min_clip_duration, end)
+
+        # ensure the requested clip length meets min duration
+        if safe_end - safe_start < self.min_clip_duration:
+            safe_end = safe_start + self.min_clip_duration
+            if input_duration is not None:
+                safe_end = min(safe_end, input_duration)
 
         # Build ffmpeg command (re-encode to ensure compatibility)
+        clip_length = max(0.0, safe_end - safe_start)
         cmd = (
             f"ffmpeg -hide_banner -loglevel error -ss {safe_start:.3f} -i {shlex.quote(video_path)} "
-            f"-t {duration:.3f} -c:v libx264 -c:a aac -pix_fmt yuv420p -y {shlex.quote(output_name)}"
+            f"-t {clip_length:.3f} -c:v libx264 -c:a aac -pix_fmt yuv420p -y {shlex.quote(output_name)}"
         )
 
         try:
