@@ -200,7 +200,7 @@ if uploaded_file:
                 for index, moment in enumerate(moments, start=1):
                     progress_value = 50 + index * 20
                     progress_bar.progress(
-                        progress_value, text=f"Cortando clip {index} de 2"
+                        progress_value, text=f"Cortando clip {index} de {N_CLIPS}"
                     )
                     out_file = os.path.join(
                         st.session_state["temp_dir"],
@@ -226,13 +226,17 @@ if uploaded_file:
                 st.session_state["clips_gerados"] = clips_temp
                 status.update(label="Concluido com sucesso", state="complete")
 
-        except (AIServiceError, VideoServiceError) as exc:
-            st.session_state["erro_processamento"] = str(exc)
-            st.session_state["erro_tecnico"] = repr(exc)
         except Exception as exc:
-            st.session_state["erro_processamento"] = (
-                "Ocorreu um erro inesperado durante o processamento."
-            )
+            # We avoid referencing AIServiceError/VideoServiceError directly to
+            # prevent import-time issues in hosted environments. Use the
+            # exception class name to categorize known service errors.
+            name = exc.__class__.__name__
+            if name in ("AIServiceError", "VideoServiceError"):
+                st.session_state["erro_processamento"] = str(exc)
+            else:
+                st.session_state["erro_processamento"] = (
+                    "Ocorreu um erro inesperado durante o processamento."
+                )
             st.session_state["erro_tecnico"] = repr(exc)
 
     if st.session_state["erro_processamento"]:

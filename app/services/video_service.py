@@ -71,6 +71,12 @@ class VideoService:
                 "ffmpeg nao encontrado no sistema. Instale ffmpeg para cortar videos."
             )
 
+        # Ensure moviepy is available at runtime
+        if VideoFileClip is None:
+            raise VideoServiceError(
+                "moviepy nao esta instalado no ambiente. Instale 'moviepy' para permitir cortes."
+            )
+
         try:
             start = float(start)
             end = float(end)
